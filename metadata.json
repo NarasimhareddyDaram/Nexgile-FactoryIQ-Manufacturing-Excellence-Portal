@@ -1,0 +1,6 @@
+{
+  "name": "Nexgile-FactoryIQ Manufacturing Excellence Portal",
+  "description": "Unified enterprise manufacturing excellence portal providing role-based visibility across R&D, NPI, production, quality, supply chain, and after-sales service.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
