@@ -38,6 +38,7 @@ import {
 } from 'recharts';
 import { Role, User, SavedReportTemplate, ReportRowData, ReportFilterState } from '../../types';
 import { INITIAL_SAVED_TEMPLATES, INITIAL_REPORT_ROWS } from '../../data/analyticsData';
+import { useLocalStorage, STORAGE_KEYS } from '../../lib/storage';
 
 interface SelfServeReportingTabProps {
   currentRole: Role;
@@ -48,9 +49,15 @@ export const SelfServeReportingTab: React.FC<SelfServeReportingTabProps> = ({
   currentRole,
   currentUser
 }) => {
-  const [savedTemplates, setSavedTemplates] = useState<SavedReportTemplate[]>(INITIAL_SAVED_TEMPLATES);
+  const [savedTemplates, setSavedTemplates] = useLocalStorage<SavedReportTemplate[]>(
+    STORAGE_KEYS.SAVED_TEMPLATES,
+    INITIAL_SAVED_TEMPLATES
+  );
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('rpt-exec-steerco');
-  const [rows, setRows] = useState<ReportRowData[]>(INITIAL_REPORT_ROWS);
+  const [rows, setRows] = useLocalStorage<ReportRowData[]>(
+    STORAGE_KEYS.REPORT_ROWS,
+    INITIAL_REPORT_ROWS
+  );
   const [searchFilter, setSearchFilter] = useState<string>('');
 
   // Report Builder Filter State

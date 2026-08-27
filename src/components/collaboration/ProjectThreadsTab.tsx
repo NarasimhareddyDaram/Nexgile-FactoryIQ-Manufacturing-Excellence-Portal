@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { Role, User, ProjectThread, ThreadComment, ThreadAttachment } from '../../types';
 import { INITIAL_PROJECT_THREADS } from '../../data/collaborationData';
+import { useLocalStorage, STORAGE_KEYS } from '../../lib/storage';
 
 interface ProjectThreadsTabProps {
   currentRole: Role | null;
@@ -32,7 +33,10 @@ interface ProjectThreadsTabProps {
 }
 
 export function ProjectThreadsTab({ currentRole, currentUser }: ProjectThreadsTabProps) {
-  const [threads, setThreads] = useState<ProjectThread[]>(INITIAL_PROJECT_THREADS);
+  const [threads, setThreads] = useLocalStorage<ProjectThread[]>(
+    STORAGE_KEYS.COLLAB_THREADS,
+    INITIAL_PROJECT_THREADS
+  );
   const [selectedThreadId, setSelectedThreadId] = useState<string>(INITIAL_PROJECT_THREADS[0].id);
   const [selectedProgramFilter, setSelectedProgramFilter] = useState<string>('all');
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>('all');

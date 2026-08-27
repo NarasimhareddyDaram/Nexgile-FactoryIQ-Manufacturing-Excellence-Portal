@@ -34,6 +34,7 @@ import {
 } from 'recharts';
 import { Role, User, PredictiveRiskFlag, RiskCategory } from '../../types';
 import { INITIAL_PREDICTIVE_RISKS } from '../../data/analyticsData';
+import { useLocalStorage, STORAGE_KEYS } from '../../lib/storage';
 
 interface PredictiveInsightsTabProps {
   currentRole: Role;
@@ -44,7 +45,10 @@ export const PredictiveInsightsTab: React.FC<PredictiveInsightsTabProps> = ({
   currentRole,
   currentUser
 }) => {
-  const [risks, setRisks] = useState<PredictiveRiskFlag[]>(INITIAL_PREDICTIVE_RISKS);
+  const [risks, setRisks] = useLocalStorage<PredictiveRiskFlag[]>(
+    STORAGE_KEYS.PREDICTIVE_RISKS,
+    INITIAL_PREDICTIVE_RISKS
+  );
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [selectedSeverity, setSelectedSeverity] = useState<string>('all');
   const [expandedRiskId, setExpandedRiskId] = useState<string | null>('risk-001');

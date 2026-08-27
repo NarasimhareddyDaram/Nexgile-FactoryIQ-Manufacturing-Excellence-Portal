@@ -45,6 +45,7 @@ import {
 import { Role, User, CustomerDashboardWidget } from '../../types';
 import { INITIAL_CUSTOMER_WIDGETS } from '../../data/analyticsData';
 import { INITIAL_PROGRAMS } from '../../data/initialData';
+import { useLocalStorage, STORAGE_KEYS } from '../../lib/storage';
 
 interface CustomerDashboardTabProps {
   currentRole: Role;
@@ -55,8 +56,14 @@ export const CustomerDashboardTab: React.FC<CustomerDashboardTabProps> = ({
   currentRole,
   currentUser
 }) => {
-  const [widgets, setWidgets] = useState<CustomerDashboardWidget[]>(INITIAL_CUSTOMER_WIDGETS);
-  const [selectedCustomer, setSelectedCustomer] = useState<string>('VoltMobility EV');
+  const [widgets, setWidgets] = useLocalStorage<CustomerDashboardWidget[]>(
+    STORAGE_KEYS.ANALYTICS_WIDGETS,
+    INITIAL_CUSTOMER_WIDGETS
+  );
+  const [selectedCustomer, setSelectedCustomer] = useLocalStorage<string>(
+    STORAGE_KEYS.ANALYTICS_CUSTOMER,
+    'VoltMobility EV'
+  );
   const [isCustomizeOpen, setIsCustomizeOpen] = useState<boolean>(false);
   const [activePreset, setActivePreset] = useState<'default' | 'engineering' | 'procurement' | 'quality'>('default');
 

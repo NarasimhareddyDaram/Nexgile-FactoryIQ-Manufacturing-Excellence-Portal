@@ -33,6 +33,7 @@ import {
 } from '../../types';
 import { INITIAL_COLLABORATION_DOCUMENTS } from '../../data/collaborationData';
 import { DocumentAnnotationModal } from './DocumentAnnotationModal';
+import { useLocalStorage, STORAGE_KEYS } from '../../lib/storage';
 
 interface DocumentCollaborationTabProps {
   currentRole: Role | null;
@@ -40,7 +41,10 @@ interface DocumentCollaborationTabProps {
 }
 
 export function DocumentCollaborationTab({ currentRole, currentUser }: DocumentCollaborationTabProps) {
-  const [documents, setDocuments] = useState<CollaborationDocument[]>(INITIAL_COLLABORATION_DOCUMENTS);
+  const [documents, setDocuments] = useLocalStorage<CollaborationDocument[]>(
+    STORAGE_KEYS.COLLAB_DOCUMENTS,
+    INITIAL_COLLABORATION_DOCUMENTS
+  );
   const [selectedDocId, setSelectedDocId] = useState<string>(INITIAL_COLLABORATION_DOCUMENTS[0].id);
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [programFilter, setProgramFilter] = useState<string>('all');

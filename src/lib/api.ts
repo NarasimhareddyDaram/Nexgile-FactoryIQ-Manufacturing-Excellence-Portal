@@ -18,33 +18,39 @@ import {
   INITIAL_ACTIVITIES,
   NAV_SECTIONS
 } from '../data/initialData';
-
-// Local storage keys for state persistence
-const STORAGE_KEY_PROGRAMS = 'nexgile_programs_v1';
-const STORAGE_KEY_HISTORY = 'nexgile_status_history_v1';
-const STORAGE_KEY_USER = 'nexgile_current_user_v1';
-const STORAGE_KEY_ISSUES = 'nexgile_issues_v1';
-const STORAGE_KEY_APPROVALS = 'nexgile_approvals_v1';
+import {
+  STORAGE_KEYS,
+  loadOrInitStorage,
+  saveStorage
+} from './storage';
 
 export const api = {
   async getRoles(): Promise<Role[]> {
     try {
       const res = await fetch('/api/roles');
-      if (res.ok) return await res.json();
+      if (res.ok) {
+        const data = await res.json();
+        saveStorage(STORAGE_KEYS.ROLES, data);
+        return data;
+      }
     } catch {
-      // fallback
+      // fallback to localStorage
     }
-    return INITIAL_ROLES;
+    return loadOrInitStorage(STORAGE_KEYS.ROLES, INITIAL_ROLES);
   },
 
   async getUsers(): Promise<User[]> {
     try {
       const res = await fetch('/api/users');
-      if (res.ok) return await res.json();
+      if (res.ok) {
+        const data = await res.json();
+        saveStorage(STORAGE_KEYS.USERS, data);
+        return data;
+      }
     } catch {
-      // fallback
+      // fallback to localStorage
     }
-    return INITIAL_USERS;
+    return loadOrInitStorage(STORAGE_KEYS.USERS, INITIAL_USERS);
   },
 
   async login(credentials: {
@@ -62,15 +68,15 @@ export const api = {
       });
       if (res.ok) {
         const data = await res.json();
-        localStorage.setItem(STORAGE_KEY_USER, JSON.stringify(data.user));
+        saveStorage(STORAGE_KEYS.CURRENT_USER, data.user);
         return data;
       }
     } catch {
-      // fallback
+      // fallback to client-side localStorage
     }
 
-    const roles = INITIAL_ROLES;
-    const users = INITIAL_USERS;
+    const roles = loadOrInitStorage(STORAGE_KEYS.ROLES, INITIAL_ROLES);
+    const users = loadOrInitStorage(STORAGE_KEYS.USERS, INITIAL_USERS);
     let user = users.find(u => u.id === credentials.userId || u.roleId === credentials.roleId);
     if (!user) {
       const role = roles.find(r => r.id === credentials.roleId) || roles[0];
@@ -83,15 +89,18 @@ export const api = {
         company: credentials.company || (role.category === 'internal' ? 'Nexgile Manufacturing' : 'Enterprise Partner'),
         department: role.name
       };
+      // Save new user to users list in storage
+      const updatedUsers = [user, ...users];
+      saveStorage(STORAGE_KEYS.USERS, updatedUsers);
     }
     const role = roles.find(r => r.id === user.roleId) || roles[0];
-    localStorage.setItem(STORAGE_KEY_USER, JSON.stringify(user));
+    saveStorage(STORAGE_KEYS.CURRENT_USER, user);
     return { user, role };
   },
 
   getSavedUser(): User | null {
     try {
-      const saved = localStorage.getItem(STORAGE_KEY_USER);
+      const saved = localStorage.getItem(STORAGE_KEYS.CURRENT_USER);
       if (saved) return JSON.parse(saved);
     } catch {
       // ignore
@@ -100,40 +109,36 @@ export const api = {
   },
 
   async getPrograms(filters?: { health?: string; stage?: string }): Promise<Program[]> {
+    let progs: Program[] = [];
     try {
       const query = new URLSearchParams();
       if (filters?.health) query.append('health', filters.health);
       if (filters?.stage) query.append('stage', filters.stage);
       const res = await fetch(`/api/programs?${query.toString()}`);
       if (res.ok) {
-        const data = await res.json();
-        localStorage.setItem(STORAGE_KEY_PROGRAMS, JSON.stringify(data));
-        return data;
+        progs = await res.json();
+        saveStorage(STORAGE_KEYS.PROGRAMS, progs);
       }
     } catch {
       // fallback
     }
 
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY_PROGRAMS);
-      if (saved) return JSON.parse(saved);
-    } catch {
-      // ignore
+    if (!progs.length) {
+      progs = loadOrInitStorage(STORAGE_KEYS.PROGRAMS, INITIAL_PROGRAMS);
     }
-    return INITIAL_PROGRAMS;
+
+    if (filters?.health && filters.health !== 'all') {
+      progs = progs.filter(p => p.health === filters.health);
+    }
+    if (filters?.stage && filters.stage !== 'all') {
+      progs = progs.filter(p => p.stage === filters.stage);
+    }
+
+    return progs;
   },
 
   async createProgram(programData: Partial<Program> & { authorName?: string; authorRole?: string }): Promise<Program> {
-    try {
-      const res = await fetch('/api/programs', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(programData)
-      });
-      if (res.ok) return await res.json();
-    } catch {
-      // fallback
-    }
+    const existingPrograms = loadOrInitStorage(STORAGE_KEYS.PROGRAMS, INITIAL_PROGRAMS);
 
     const newProg: Program = {
       id: `prog-${Date.now()}`,
@@ -161,6 +166,52 @@ export const api = {
       updatedAt: new Date().toISOString()
     };
 
+    // Try backend if running, otherwise update storage
+    try {
+      const res = await fetch('/api/programs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(programData)
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const updated = [data, ...existingPrograms.filter(p => p.id !== data.id)];
+        saveStorage(STORAGE_KEYS.PROGRAMS, updated);
+        return data;
+      }
+    } catch {
+      // fallback
+    }
+
+    const updated = [newProg, ...existingPrograms];
+    saveStorage(STORAGE_KEYS.PROGRAMS, updated);
+
+    // Also append to status history and activity in storage
+    const historyList = loadOrInitStorage(STORAGE_KEYS.STATUS_HISTORY, INITIAL_STATUS_HISTORY);
+    const newHistory: StatusHistoryRecord = {
+      id: `sh-${Date.now()}`,
+      programId: newProg.id,
+      programName: newProg.name,
+      changedByName: programData.authorName || 'Program Manager',
+      category: 'Stage Transition',
+      newStatus: `${newProg.stage} Kickoff`,
+      reason: 'Program created and initialized in portal.',
+      isInternalOnly: false,
+      createdAt: new Date().toISOString()
+    };
+    saveStorage(STORAGE_KEYS.STATUS_HISTORY, [newHistory, ...historyList]);
+
+    const activityList = loadOrInitStorage(STORAGE_KEYS.ACTIVITIES, INITIAL_ACTIVITIES);
+    const newActivity: Activity = {
+      id: `act-${Date.now()}`,
+      user: programData.authorName || 'Program Office',
+      action: `Created new project charter: ${newProg.code} (${newProg.name})`,
+      timestamp: 'Just now',
+      type: 'status_change',
+      programCode: newProg.code
+    };
+    saveStorage(STORAGE_KEYS.ACTIVITIES, [newActivity, ...activityList]);
+
     return newProg;
   },
 
@@ -176,21 +227,14 @@ export const api = {
     internalNotes?: string;
     isInternalOnly?: boolean;
   }): Promise<{ success: boolean; program?: Program; historyEntry?: StatusHistoryRecord }> {
-    try {
-      const res = await fetch(`/api/programs/${programId}/status-change`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      if (res.ok) return await res.json();
-    } catch {
-      // fallback
-    }
+    const existingPrograms = loadOrInitStorage(STORAGE_KEYS.PROGRAMS, INITIAL_PROGRAMS);
+    const existingHistory = loadOrInitStorage(STORAGE_KEYS.STATUS_HISTORY, INITIAL_STATUS_HISTORY);
 
+    const targetProgram = existingPrograms.find(p => p.id === programId);
     const historyEntry: StatusHistoryRecord = {
       id: `sh-${Date.now()}`,
       programId,
-      programName: programId,
+      programName: targetProgram?.name || programId,
       changedByName: payload.changedByName,
       category: payload.category,
       newStatus: payload.newStatus,
@@ -199,73 +243,89 @@ export const api = {
       createdAt: new Date().toISOString()
     };
 
+    // Update programs list
+    const updatedPrograms = existingPrograms.map(p => {
+      if (p.id === programId) {
+        return {
+          ...p,
+          health: payload.health || p.health,
+          stage: (payload.stage as any) || p.stage,
+          currentYieldPercent: payload.currentYieldPercent ?? p.currentYieldPercent,
+          customerSummary: payload.customerSummary || p.customerSummary,
+          internalNotes: payload.internalNotes || p.internalNotes,
+          updatedAt: new Date().toISOString()
+        };
+      }
+      return p;
+    });
+
+    saveStorage(STORAGE_KEYS.PROGRAMS, updatedPrograms);
+    saveStorage(STORAGE_KEYS.STATUS_HISTORY, [historyEntry, ...existingHistory]);
+
+    // Also update activity list
+    const existingActivities = loadOrInitStorage(STORAGE_KEYS.ACTIVITIES, INITIAL_ACTIVITIES);
+    const newActivity: Activity = {
+      id: `act-${Date.now()}`,
+      user: payload.changedByName,
+      action: `Updated status for ${targetProgram?.code || programId}: "${payload.newStatus}" (${payload.category})`,
+      timestamp: 'Just now',
+      type: 'status_change',
+      programCode: targetProgram?.code
+    };
+    saveStorage(STORAGE_KEYS.ACTIVITIES, [newActivity, ...existingActivities]);
+
+    try {
+      await fetch(`/api/programs/${programId}/status-change`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+    } catch {
+      // ignore
+    }
+
     return { success: true, historyEntry };
   },
 
   async getStatusHistory(programId?: string): Promise<StatusHistoryRecord[]> {
-    try {
-      const query = programId ? `?programId=${programId}` : '';
-      const res = await fetch(`/api/status-history${query}`);
-      if (res.ok) return await res.json();
-    } catch {
-      // fallback
-    }
-    return programId ? INITIAL_STATUS_HISTORY.filter(sh => sh.programId === programId) : INITIAL_STATUS_HISTORY;
+    const list = loadOrInitStorage(STORAGE_KEYS.STATUS_HISTORY, INITIAL_STATUS_HISTORY);
+    return programId ? list.filter(sh => sh.programId === programId) : list;
   },
 
   async getIssues(programId?: string): Promise<Issue[]> {
-    try {
-      const query = programId ? `?programId=${programId}` : '';
-      const res = await fetch(`/api/issues${query}`);
-      if (res.ok) return await res.json();
-    } catch {
-      // fallback
-    }
-    return programId ? INITIAL_ISSUES.filter(i => i.programId === programId) : INITIAL_ISSUES;
+    const list = loadOrInitStorage(STORAGE_KEYS.ISSUES, INITIAL_ISSUES);
+    return programId ? list.filter(i => i.programId === programId) : list;
   },
 
   async getApprovals(programId?: string): Promise<Approval[]> {
-    try {
-      const query = programId ? `?programId=${programId}` : '';
-      const res = await fetch(`/api/approvals${query}`);
-      if (res.ok) return await res.json();
-    } catch {
-      // fallback
-    }
-    return programId ? INITIAL_APPROVALS.filter(a => a.programId === programId) : INITIAL_APPROVALS;
+    const list = loadOrInitStorage(STORAGE_KEYS.APPROVALS, INITIAL_APPROVALS);
+    return programId ? list.filter(a => a.programId === programId) : list;
   },
 
   async decideApproval(approvalId: string, decision: 'approved' | 'rejected', decidedBy: string): Promise<boolean> {
+    const existingApprovals = loadOrInitStorage(STORAGE_KEYS.APPROVALS, INITIAL_APPROVALS);
+    const updated = existingApprovals.map(a =>
+      a.id === approvalId ? { ...a, status: decision } : a
+    );
+    saveStorage(STORAGE_KEYS.APPROVALS, updated);
+
     try {
-      const res = await fetch(`/api/approvals/${approvalId}/decide`, {
+      await fetch(`/api/approvals/${approvalId}/decide`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ decision, decidedBy })
       });
-      if (res.ok) return true;
     } catch {
-      // fallback
+      // ignore
     }
     return true;
   },
 
   async getActivities(): Promise<Activity[]> {
-    try {
-      const res = await fetch('/api/activities');
-      if (res.ok) return await res.json();
-    } catch {
-      // fallback
-    }
-    return INITIAL_ACTIVITIES;
+    return loadOrInitStorage(STORAGE_KEYS.ACTIVITIES, INITIAL_ACTIVITIES);
   },
 
   async getNavSections(): Promise<NavSectionConfig[]> {
-    try {
-      const res = await fetch('/api/nav-sections');
-      if (res.ok) return await res.json();
-    } catch {
-      // fallback
-    }
     return NAV_SECTIONS;
   }
 };
